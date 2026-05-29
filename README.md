@@ -13,6 +13,8 @@ Every call runs with **your** token, scoped to **your** permissions.
 | `dynatrace_api_request` | Authenticated call to **any** `/api/v2/` endpoint (GET always; writes gated). |
 | `fetch_logs` | Convenience wrapper for `/api/v2/logs/search`. |
 | `list_problems` | Convenience wrapper for `/api/v2/problems`. |
+| `query_metrics` | Time-series metric query via `/api/v2/metrics/query`. |
+| `list_metrics` | Discover available metrics via `/api/v2/metrics`. |
 | `whoami` | Connectivity / auth sanity check (no secrets printed). |
 
 ## 1. Get a token
@@ -99,6 +101,39 @@ Then ask, e.g.: *"Fetch logs with status ERROR in namespace payments"* or
 
 Pair it with the `dynatrace_mcp_system_prompt.md` system prompt for disciplined,
 audit-friendly behaviour.
+
+## Métriques — API classique vs DQL
+
+L'API `/api/v2/metrics/query` permet d'interroger des séries temporelles, tout comme DQL
+`fetch metrics` sur SaaS. La différence réelle :
+
+| Capacité | `/api/v2/metrics/query` | DQL (SaaS/Grail) |
+|----------|------------------------|-----------------|
+| Séries temporelles | ✅ | ✅ |
+| Filtrer par entité / tag / zone | ✅ | ✅ |
+| Agrégations (avg, min, max, pct) | ✅ via `metricSelector` | ✅ plus riche |
+| Résolution personnalisée | ✅ | ✅ |
+| **Corréler métriques + logs + traces** | ❌ appels séparés | ✅ JOIN inline |
+| **Calculs cross-métriques** (ratios, taux) | ❌ | ✅ |
+| **Fonctions inline** (`toRate()`, `delta()`) | ❌ | ✅ |
+
+**En pratique :** l'API classique couvre 80 % des besoins SRE (dashboards, alertes,
+time series par service/host). Ce qui manque : la corrélation multi-signaux en une
+seule requête — sur Managed, ça se fait en plusieurs appels.
+
+```bash
+# Découvrir les métriques disponibles
+list_metrics(text="cpu")
+list_metrics(selector="builtin:service.*")
+
+# Requêter une série temporelle
+query_metrics("builtin:host.cpu.usage:avg", resolution="5m", from_time="now-2h")
+query_metrics(
+    "builtin:service.response.time:percentile(95)",
+    from_time="now-1h",
+    entity_selector="type(SERVICE),tag(prod)"
+)
+```
 
 ## API quick notes
 

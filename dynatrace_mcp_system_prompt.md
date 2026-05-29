@@ -29,11 +29,26 @@ status:ERROR AND k8s.namespace:payments
 # Errors on a specific host prefix
 status:ERROR AND host:prod-*
 
-# Entity selector for services
-entitySelector=type(SERVICE)&from=now-1h
+# Discover available CPU metrics
+list_metrics(text="cpu")
 
-# Metric selector (via dynatrace_api_request on /api/v2/metrics/query)
-metricSelector=builtin:host.cpu.usage&resolution=5m&from=now-1h
+# Host CPU usage last 2h, 5-minute buckets
+query_metrics("builtin:host.cpu.usage:avg", resolution="5m", from_time="now-2h")
+
+# P95 response time for production services, last 1h
+query_metrics(
+    "builtin:service.response.time:percentile(95)",
+    from_time="now-1h",
+    entity_selector="type(SERVICE),tag(prod)"
+)
+
+# Error rate for a specific management zone
+query_metrics(
+    "builtin:service.errors.total.rate:avg",
+    resolution="1m",
+    from_time="now-30m",
+    mz_selector='name("Production")'
+)
 ```
 
 ## Tool selection guide
@@ -42,5 +57,7 @@ metricSelector=builtin:host.cpu.usage&resolution=5m&from=now-1h
 |------|------|
 | Fetch recent logs | `fetch_logs` |
 | List open Davis problems | `list_problems` |
+| Query metric time series | `query_metrics` |
+| Discover available metrics | `list_metrics` |
 | Call any `/api/v2/` endpoint | `dynatrace_api_request` |
 | Verify auth / connectivity | `whoami` |

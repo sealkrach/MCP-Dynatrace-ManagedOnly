@@ -7,6 +7,8 @@ A self-hosted MCP server that talks directly to the Dynatrace Managed classic AP
   - dynatrace_api_request  : generic authenticated call to ANY /api/v2/ endpoint
   - fetch_logs             : convenience wrapper for /api/v2/logs/search
   - list_problems          : convenience wrapper for /api/v2/problems
+  - query_metrics          : time-series metric query via /api/v2/metrics/query
+  - list_metrics           : discover available metrics via /api/v2/metrics
   - whoami                 : connectivity / auth / scope check
 
 Auth: API Token (preferred) OR OAuth client-credentials.
@@ -228,6 +230,68 @@ async def list_problems(
     if to_time:
         params["to"] = to_time
     return await dynatrace_api_request("GET", "/api/v2/problems", query_params=params)
+
+
+@mcp.tool()
+async def query_metrics(
+    metric_selector: str,
+    resolution: Optional[str] = None,
+    from_time: Optional[str] = None,
+    to_time: Optional[str] = None,
+    entity_selector: Optional[str] = None,
+    mz_selector: Optional[str] = None,
+) -> str:
+    """Query metric time series via /api/v2/metrics/query.
+
+    Args:
+        metric_selector: Metric key with optional aggregation,
+            e.g. 'builtin:host.cpu.usage:avg' or
+            'builtin:service.response.time:percentile(95)'.
+            Use list_metrics() to discover available keys.
+        resolution: Time bucket size, e.g. '1m', '5m', '1h', '1d'.
+            Omit to use the API default (depends on the timeframe).
+        from_time / to_time: ISO-8601 bounds or relative (e.g. 'now-2h').
+        entity_selector: Filter by entity, e.g. 'type(SERVICE),tag(prod)'.
+        mz_selector: Filter by management zone, e.g. 'name("Production")'.
+
+    Returns:
+        JSON with resolution, metric series and data points per entity/dimension.
+    """
+    params: dict[str, Any] = {"metricSelector": metric_selector}
+    if resolution:
+        params["resolution"] = resolution
+    if from_time:
+        params["from"] = from_time
+    if to_time:
+        params["to"] = to_time
+    if entity_selector:
+        params["entitySelector"] = entity_selector
+    if mz_selector:
+        params["mzSelector"] = mz_selector
+    return await dynatrace_api_request("GET", "/api/v2/metrics/query", query_params=params)
+
+
+@mcp.tool()
+async def list_metrics(
+    text: Optional[str] = None,
+    selector: Optional[str] = None,
+    limit: int = 50,
+) -> str:
+    """Discover available metrics via /api/v2/metrics.
+
+    Use this to find the right metric key before calling query_metrics().
+
+    Args:
+        text: Filter by substring in metric name or description (e.g. 'cpu', 'response.time').
+        selector: metricSelector pattern (e.g. 'builtin:host.*').
+        limit: Max metrics to return (default 50).
+    """
+    params: dict[str, Any] = {"pageSize": min(int(limit), 500)}
+    if text:
+        params["text"] = text
+    if selector:
+        params["metricSelector"] = selector
+    return await dynatrace_api_request("GET", "/api/v2/metrics", query_params=params)
 
 
 @mcp.tool()
