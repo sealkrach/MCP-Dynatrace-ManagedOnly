@@ -15,6 +15,9 @@ Every call runs with **your** token, scoped to **your** permissions.
 | `list_problems` | Convenience wrapper for `/api/v2/problems`. |
 | `query_metrics` | Time-series metric query via `/api/v2/metrics/query`. |
 | `list_metrics` | Discover available metrics via `/api/v2/metrics`. |
+| `list_entities` | Monitored entities (hosts, services, apps…) with selector/type/tag filters. |
+| `list_slos` | Service Level Objectives with status and error budget. |
+| `get_audit_logs` | Environment audit log — who did what and when. |
 | `whoami` | Connectivity / auth sanity check (no secrets printed). |
 
 ## 1. Get a token

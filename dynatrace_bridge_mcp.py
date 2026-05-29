@@ -9,6 +9,9 @@ A self-hosted MCP server that talks directly to the Dynatrace Managed classic AP
   - list_problems          : convenience wrapper for /api/v2/problems
   - query_metrics          : time-series metric query via /api/v2/metrics/query
   - list_metrics           : discover available metrics via /api/v2/metrics
+  - list_entities          : monitored entities with entitySelector/type/tag filters
+  - list_slos              : Service Level Objectives via /api/v2/slo
+  - get_audit_logs         : environment audit log via /api/v2/auditlogs
   - whoami                 : connectivity / auth / scope check
 
 Auth: API Token (preferred) OR OAuth client-credentials.
@@ -292,6 +295,110 @@ async def list_metrics(
     if selector:
         params["metricSelector"] = selector
     return await dynatrace_api_request("GET", "/api/v2/metrics", query_params=params)
+
+
+@mcp.tool()
+async def list_entities(
+    entity_selector: Optional[str] = None,
+    entity_type: Optional[str] = None,
+    tag: Optional[str] = None,
+    from_time: Optional[str] = None,
+    to_time: Optional[str] = None,
+    limit: int = 50,
+) -> str:
+    """List monitored entities via /api/v2/entities.
+
+    Use this to find hosts, services, applications, process groups, etc.
+    Use list_entities first to get entity IDs, then pass them to query_metrics
+    via entity_selector.
+
+    Args:
+        entity_selector: Full entitySelector expression, e.g.
+            'type(SERVICE),tag(prod),healthState(UNHEALTHY)'.
+            If provided, entity_type and tag are ignored.
+        entity_type: Entity type shortcut, e.g. 'HOST', 'SERVICE',
+            'APPLICATION', 'PROCESS_GROUP', 'DATABASE'. Ignored if
+            entity_selector is set.
+        tag: Filter by tag value, e.g. 'prod' or 'env:production'. Ignored if
+            entity_selector is set.
+        from_time / to_time: Optional ISO-8601 bounds for entity activity window.
+        limit: Max entities to return (default 50).
+    """
+    params: dict[str, Any] = {"pageSize": min(int(limit), 500)}
+    if entity_selector:
+        params["entitySelector"] = entity_selector
+    else:
+        parts = []
+        if entity_type:
+            parts.append(f"type({entity_type})")
+        if tag:
+            parts.append(f"tag({tag})")
+        if parts:
+            params["entitySelector"] = ",".join(parts)
+    if from_time:
+        params["from"] = from_time
+    if to_time:
+        params["to"] = to_time
+    return await dynatrace_api_request("GET", "/api/v2/entities", query_params=params)
+
+
+@mcp.tool()
+async def list_slos(
+    name_filter: Optional[str] = None,
+    enabled_only: bool = False,
+    from_time: Optional[str] = None,
+    to_time: Optional[str] = None,
+    limit: int = 50,
+) -> str:
+    """List Service Level Objectives via /api/v2/slo.
+
+    Returns SLO definitions with their current status, error budget, and
+    burn rate — useful for SRE reporting and incident context.
+
+    Args:
+        name_filter: Case-insensitive substring filter on SLO name.
+        enabled_only: If True, return only enabled SLOs.
+        from_time / to_time: Evaluation timeframe (ISO-8601 or relative like 'now-7d').
+        limit: Max SLOs to return (default 50).
+    """
+    params: dict[str, Any] = {"pageSize": min(int(limit), 10000)}
+    if name_filter:
+        params["sloSelector"] = f"name(\"{name_filter}\")"
+    if enabled_only:
+        params["enabledSlos"] = "true"
+    if from_time:
+        params["from"] = from_time
+    if to_time:
+        params["to"] = to_time
+    return await dynatrace_api_request("GET", "/api/v2/slo", query_params=params)
+
+
+@mcp.tool()
+async def get_audit_logs(
+    filter_expr: Optional[str] = None,
+    from_time: Optional[str] = None,
+    to_time: Optional[str] = None,
+    limit: int = 50,
+) -> str:
+    """Retrieve environment audit log entries via /api/v2/auditlogs.
+
+    Useful for compliance, change tracking, and incident investigation in
+    regulated environments. Records who did what and when.
+
+    Args:
+        filter_expr: Filter expression, e.g. 'user("jane.doe@company.com")'
+            or 'eventType("CREATE")' or 'category("CONFIG")'.
+        from_time / to_time: ISO-8601 bounds (default: last 3 days per API).
+        limit: Max log entries to return (default 50).
+    """
+    params: dict[str, Any] = {"pageSize": min(int(limit), 1000)}
+    if filter_expr:
+        params["filter"] = filter_expr
+    if from_time:
+        params["from"] = from_time
+    if to_time:
+        params["to"] = to_time
+    return await dynatrace_api_request("GET", "/api/v2/auditlogs", query_params=params)
 
 
 @mcp.tool()

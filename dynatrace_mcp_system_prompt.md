@@ -59,5 +59,8 @@ query_metrics(
 | List open Davis problems | `list_problems` |
 | Query metric time series | `query_metrics` |
 | Discover available metrics | `list_metrics` |
+| List hosts / services / apps | `list_entities` |
+| Check SLO status / error budget | `list_slos` |
+| Audit trail / compliance | `get_audit_logs` |
 | Call any `/api/v2/` endpoint | `dynatrace_api_request` |
 | Verify auth / connectivity | `whoami` |
