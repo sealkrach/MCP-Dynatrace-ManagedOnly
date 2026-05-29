@@ -45,6 +45,8 @@ API tool you may also need the relevant classic/platform API scopes.
 
 ## 2. Install
 
+Requires **Python 3.9+**.
+
 ```bash
 python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
@@ -61,6 +63,8 @@ pip install -r requirements.txt
 | `DT_ALLOW_WRITE` | no | `true` to permit non-GET API calls. **Default `false`.** |
 | `DT_MAX_POLL_SECONDS` | no | Total DQL wait budget (default 120) |
 | `DT_REQUEST_TIMEOUT_MS` | no | Per execute/poll call (default 30000) |
+| `DT_HTTP_TIMEOUT` | no | httpx client-level timeout in seconds (default 60) |
+| `DT_SSO_TOKEN_URL` | no | OAuth token endpoint — override for on-prem SSO (default `https://sso.dynatrace.com/sso/oauth2/token`) |
 
 ## 4. Wire into a client
 
