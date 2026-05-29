@@ -6,10 +6,12 @@ A self-hosted MCP server that talks DIRECTLY to the Dynatrace Platform API,
 working around managed-MCP limitations around DQL execution and raw API calls.
 
 It exposes:
-  - execute_dql            : run any DQL query against Grail (async execute + poll)
+  - execute_dql            : run any DQL query against Grail (async execute + poll) [SaaS only]
   - dynatrace_api_request  : generic authenticated call to ANY Dynatrace platform API
-  - fetch_logs             : convenience DQL wrapper for logs
-  - list_davis_problems    : convenience DQL wrapper for Davis problems
+  - fetch_logs             : convenience DQL wrapper for logs [SaaS only]
+  - fetch_logs_classic     : logs via /api/v2/logs/search [SaaS + Managed]
+  - list_davis_problems    : convenience DQL wrapper for Davis problems [SaaS only]
+  - list_problems_classic  : problems via /api/v2/problems [SaaS + Managed]
   - whoami                 : connectivity / auth / scope check
 
 Auth: Platform Token (preferred) OR OAuth client-credentials.
@@ -17,6 +19,10 @@ Runs over stdio (standard for local MCP clients: VS Code, Claude Desktop, etc.).
 
 Read the companion README for setup. Designed for regulated/banking use:
 write-style HTTP methods are gated behind DT_ALLOW_WRITE.
+
+Instance types:
+  - saas    (default): full Grail + classic API access
+  - managed : classic /api/v2/ only; DQL tools return a clear error
 """
 
 from __future__ import annotations
@@ -43,8 +49,9 @@ def _normalize_env_url(raw: Optional[str]) -> str:
     """Accept a full URL or a bare environment id and return the apps base URL."""
     if not raw:
         raise RuntimeError(
-            "DT_ENVIRONMENT_URL is required, e.g. https://abc12345.apps.dynatrace.com "
-            "(or just the environment id 'abc12345')."
+            "DT_ENVIRONMENT_URL is required. "
+            "SaaS: https://abc12345.apps.dynatrace.com (or just 'abc12345'). "
+            "Managed: full URL required, e.g. https://dynatrace.mycompany.com/e/ENV_ID"
         )
     raw = raw.strip().rstrip("/")
     if raw.startswith("http://") or raw.startswith("https://"):
@@ -68,6 +75,9 @@ DT_SSO_TOKEN_URL = _env("DT_SSO_TOKEN_URL", "https://sso.dynatrace.com/sso/oauth
 
 # Safety: anything that is not GET is refused unless this is explicitly "true".
 DT_ALLOW_WRITE = (_env("DT_ALLOW_WRITE", "false") or "false").lower() == "true"
+
+# Instance type: "saas" (default) or "managed" (on-premise, no Grail).
+DT_INSTANCE_TYPE = (_env("DT_INSTANCE_TYPE", "saas") or "saas").lower()
 
 # Polling / timeouts
 DT_REQUEST_TIMEOUT_MS = int(_env("DT_REQUEST_TIMEOUT_MS", "30000"))   # per execute/poll call
@@ -141,6 +151,15 @@ async def _run_dql(
     to_time: Optional[str],
     max_records: int,
 ) -> dict[str, Any]:
+    if DT_INSTANCE_TYPE == "managed":
+        return {
+            "ok": False,
+            "error": (
+                "DQL / Grail is not available on Dynatrace Managed. "
+                "Use fetch_logs_classic(), list_problems_classic(), "
+                "or dynatrace_api_request() with /api/v2/ endpoints instead."
+            ),
+        }
     headers = await _auth_headers()
     body: dict[str, Any] = {
         "query": query,
@@ -362,16 +381,73 @@ async def list_davis_problems(
 
 
 @mcp.tool()
+async def fetch_logs_classic(
+    query: Optional[str] = None,
+    limit: int = 50,
+    from_time: Optional[str] = None,
+    to_time: Optional[str] = None,
+) -> str:
+    """Fetch logs via the classic /api/v2/logs/search endpoint. Works on SaaS and Managed.
+
+    Prefer this tool over fetch_logs when DT_INSTANCE_TYPE=managed.
+
+    Args:
+        query: Log search query string (e.g. 'status:ERROR AND k8s.namespace:payments').
+            Omit to return all recent logs.
+        limit: Max log lines (default 50, max 1000).
+        from_time / to_time: Optional ISO-8601 bounds (e.g. '2026-05-29T10:00:00Z').
+    """
+    params: dict[str, Any] = {"pageSize": min(int(limit), 1000)}
+    if query:
+        params["query"] = query
+    if from_time:
+        params["from"] = from_time
+    if to_time:
+        params["to"] = to_time
+    return await dynatrace_api_request("GET", "/api/v2/logs/search", query_params=params)
+
+
+@mcp.tool()
+async def list_problems_classic(
+    open_only: bool = True,
+    limit: int = 20,
+    from_time: Optional[str] = None,
+    to_time: Optional[str] = None,
+) -> str:
+    """List Davis problems via the classic /api/v2/problems endpoint. Works on SaaS and Managed.
+
+    Prefer this tool over list_davis_problems when DT_INSTANCE_TYPE=managed.
+
+    Args:
+        open_only: If True, filter to OPEN problems only (default True).
+        limit: Max problems to return (default 20, max 50 per page).
+        from_time / to_time: Optional ISO-8601 bounds.
+    """
+    params: dict[str, Any] = {"pageSize": min(int(limit), 50)}
+    if open_only:
+        params["problemSelector"] = "status(OPEN)"
+    if from_time:
+        params["from"] = from_time
+    if to_time:
+        params["to"] = to_time
+    return await dynatrace_api_request("GET", "/api/v2/problems", query_params=params)
+
+
+@mcp.tool()
 async def whoami() -> str:
-    """Connectivity + auth check. Runs a trivial DQL and reports config (no secrets)."""
+    """Connectivity + auth check. Reports config (no secrets) and probes the API."""
     info = {
         "environment_url": DT_ENV_URL,
+        "instance_type": DT_INSTANCE_TYPE,
         "auth_mode": "platform_token" if DT_PLATFORM_TOKEN else (
             "oauth_client_credentials" if DT_OAUTH_CLIENT_ID else "none"),
         "write_enabled": DT_ALLOW_WRITE,
         "max_poll_seconds": DT_MAX_POLL_SECONDS,
     }
-    probe = await _run_dql("data record(probe = 1)", None, None, 1)
+    if DT_INSTANCE_TYPE == "managed":
+        probe = json.loads(await dynatrace_api_request("GET", "/api/v2/environments"))
+    else:
+        probe = await _run_dql("data record(probe = 1)", None, None, 1)
     info["connectivity"] = "ok" if probe.get("ok") else "failed"
     info["probe"] = probe
     return json.dumps(info, default=str)

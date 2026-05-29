@@ -11,13 +11,15 @@ permissions.
 
 ## Tools
 
-| Tool | Purpose |
-|------|---------|
-| `execute_dql` | Run any DQL query against Grail (async execute + poll). The core workaround. |
-| `dynatrace_api_request` | Authenticated call to **any** Dynatrace platform API path (GET always; writes gated). |
-| `fetch_logs` | Convenience DQL wrapper for recent logs. |
-| `list_davis_problems` | Convenience DQL wrapper for Davis problems (events table). |
-| `whoami` | Connectivity / auth / scope sanity check (no secrets printed). |
+| Tool | SaaS | Managed | Purpose |
+|------|------|---------|---------|
+| `execute_dql` | ✅ | ❌ | Run any DQL query against Grail (async execute + poll). |
+| `dynatrace_api_request` | ✅ | ✅ | Authenticated call to **any** Dynatrace API path (GET always; writes gated). |
+| `fetch_logs` | ✅ | ❌ | Convenience DQL wrapper for recent logs. |
+| `fetch_logs_classic` | ✅ | ✅ | Logs via `/api/v2/logs/search`. Use on Managed or as SaaS alternative. |
+| `list_davis_problems` | ✅ | ❌ | Convenience DQL wrapper for Davis problems (events table). |
+| `list_problems_classic` | ✅ | ✅ | Problems via `/api/v2/problems`. Use on Managed or as SaaS alternative. |
+| `whoami` | ✅ | ✅ | Connectivity / auth / scope sanity check (no secrets printed). |
 
 ## 1. Get a token
 
@@ -60,6 +62,7 @@ pip install -r requirements.txt
 | `DT_PLATFORM_TOKEN` | yes* | Platform token (`dt0s16.…`). *Or use OAuth vars. |
 | `DT_OAUTH_CLIENT_ID` / `DT_OAUTH_CLIENT_SECRET` | * | Alternative to platform token |
 | `DT_OAUTH_SCOPES` | no | Space-separated; defaults to read-only storage scopes |
+| `DT_INSTANCE_TYPE` | no | `saas` (default) or `managed`. Set to `managed` for on-premise instances. |
 | `DT_ALLOW_WRITE` | no | `true` to permit non-GET API calls. **Default `false`.** |
 | `DT_MAX_POLL_SECONDS` | no | Total DQL wait budget (default 120) |
 | `DT_REQUEST_TIMEOUT_MS` | no | Per execute/poll call (default 30000) |
@@ -107,6 +110,41 @@ Then ask, e.g.: *"Run DQL: fetch logs | filter loglevel=="ERROR" | limit 20"* or
 
 Pair it with the `dynatrace_mcp_system_prompt.md` system prompt for disciplined,
 audit-friendly behaviour.
+
+## Dynatrace Managed (on-premise)
+
+Set `DT_INSTANCE_TYPE=managed` to enable Managed mode. DQL tools (`execute_dql`,
+`fetch_logs`, `list_davis_problems`) will return a clear error pointing to the alternatives
+— Grail endpoints don't exist on Managed.
+
+**Minimum config for Managed:**
+
+```json
+{
+  "env": {
+    "DT_ENVIRONMENT_URL": "https://dynatrace.mycompany.com/e/ENV_ID",
+    "DT_PLATFORM_TOKEN": "dt0s08.XXXX",
+    "DT_INSTANCE_TYPE": "managed"
+  }
+}
+```
+
+If using OAuth instead of a platform token, also override the SSO endpoint:
+
+```json
+{
+  "env": {
+    "DT_ENVIRONMENT_URL": "https://dynatrace.mycompany.com/e/ENV_ID",
+    "DT_OAUTH_CLIENT_ID": "...",
+    "DT_OAUTH_CLIENT_SECRET": "...",
+    "DT_SSO_TOKEN_URL": "https://dynatrace.mycompany.com/sso/oauth2/token",
+    "DT_INSTANCE_TYPE": "managed"
+  }
+}
+```
+
+On Managed, use `fetch_logs_classic` (query syntax: `status:ERROR AND host:prod-*`) and
+`list_problems_classic` instead of their DQL counterparts.
 
 ## DQL quick notes
 
