@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: dynatrace-bridge-config
+data:
+  DT_ENVIRONMENT_URL: "https://dynatrace.mycompany.com/e/ENV_ID"  # à adapter
+  MCP_TRANSPORT: "streamable-http"
+  MCP_PORT: "8000"
+  DT_ALLOW_WRITE: "false"
+  DT_HTTP_TIMEOUT: "60"

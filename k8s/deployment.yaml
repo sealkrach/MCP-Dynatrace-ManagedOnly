@@ -1,0 +1,62 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: dynatrace-bridge-mcp
+  labels:
+    app: dynatrace-bridge-mcp
+spec:
+  replicas: 3
+  selector:
+    matchLabels:
+      app: dynatrace-bridge-mcp
+  template:
+    metadata:
+      labels:
+        app: dynatrace-bridge-mcp
+    spec:
+      containers:
+      - name: mcp
+        image: dynatrace-bridge-mcp:latest
+        imagePullPolicy: IfNotPresent
+        ports:
+        - containerPort: 8000
+          name: mcp
+        envFrom:
+        - configMapRef:
+            name: dynatrace-bridge-config
+        env:
+        - name: DT_API_TOKEN
+          valueFrom:
+            secretKeyRef:
+              name: dynatrace-bridge-secret
+              key: api-token
+        readinessProbe:
+          tcpSocket:
+            port: 8000
+          initialDelaySeconds: 5
+          periodSeconds: 10
+        livenessProbe:
+          tcpSocket:
+            port: 8000
+          initialDelaySeconds: 10
+          periodSeconds: 30
+        resources:
+          requests:
+            cpu: "100m"
+            memory: "128Mi"
+          limits:
+            cpu: "500m"
+            memory: "256Mi"
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: dynatrace-bridge-mcp
+spec:
+  selector:
+    app: dynatrace-bridge-mcp
+  ports:
+  - port: 8000
+    targetPort: 8000
+    name: mcp
+  type: ClusterIP

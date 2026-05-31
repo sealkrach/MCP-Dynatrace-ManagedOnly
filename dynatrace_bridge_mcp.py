@@ -64,6 +64,11 @@ DT_ALLOW_WRITE = (_env("DT_ALLOW_WRITE", "false") or "false").lower() == "true"
 # httpx client timeout in seconds.
 DT_HTTP_TIMEOUT = float(_env("DT_HTTP_TIMEOUT", "60"))
 
+# Server transport: "stdio" (local MCP clients) or "streamable-http" (k8s / remote).
+MCP_TRANSPORT = _env("MCP_TRANSPORT", "stdio")
+MCP_HOST      = _env("MCP_HOST", "0.0.0.0")
+MCP_PORT      = int(_env("MCP_PORT", "8000"))
+
 mcp = FastMCP("dynatrace-bridge")
 
 # --------------------------------------------------------------------------- #
@@ -417,4 +422,7 @@ async def whoami() -> str:
 
 
 if __name__ == "__main__":
-    mcp.run(transport="stdio")
+    if MCP_TRANSPORT == "streamable-http":
+        mcp.run(transport="streamable-http", host=MCP_HOST, port=MCP_PORT)
+    else:
+        mcp.run(transport="stdio")

@@ -51,7 +51,57 @@ python -m venv venv && source venv/bin/activate
 pip install -r requirements.txt
 ```
 
-## 3. Configure (environment variables)
+## 3. Déploiement Kubernetes (optionnel)
+
+Le serveur est **100 % stateless** avec `DT_API_TOKEN` et supporte le transport HTTP
+pour un déploiement multi-replica.
+
+**Build de l'image :**
+
+```bash
+docker build -t dynatrace-bridge-mcp:latest .
+```
+
+**Test local en mode HTTP :**
+
+```bash
+docker run --rm \
+  -e DT_ENVIRONMENT_URL="https://dynatrace.mycompany.com/e/ENV_ID" \
+  -e DT_API_TOKEN="dt0s08.XXXX" \
+  -e MCP_TRANSPORT=streamable-http \
+  -p 8000:8000 \
+  dynatrace-bridge-mcp:latest
+```
+
+**Déploiement sur K8s :**
+
+```bash
+# 1. Créer le secret avec le token
+kubectl create secret generic dynatrace-bridge-secret \
+  --from-literal=api-token="dt0s08.XXXX"
+
+# 2. Adapter l'URL dans k8s/configmap.yaml, puis appliquer
+kubectl apply -f k8s/
+
+# 3. Vérifier
+kubectl get pods -l app=dynatrace-bridge-mcp
+
+# 4. Scaler
+kubectl scale deployment dynatrace-bridge-mcp --replicas=5
+```
+
+Le Service expose le port 8000 en ClusterIP. Les clients MCP dans le cluster pointent
+vers `http://dynatrace-bridge-mcp:8000`.
+
+**Variables d'env spécifiques au mode HTTP :**
+
+| Variable | Default | Notes |
+|----------|---------|-------|
+| `MCP_TRANSPORT` | `stdio` | Mettre `streamable-http` pour k8s |
+| `MCP_PORT` | `8000` | Port d'écoute HTTP |
+| `MCP_HOST` | `0.0.0.0` | Bind address |
+
+## 5. Configure (environment variables)
 
 | Variable | Required | Notes |
 |----------|----------|-------|
@@ -63,7 +113,7 @@ pip install -r requirements.txt
 | `DT_ALLOW_WRITE` | no | `true` to permit non-GET API calls. **Default `false`.** |
 | `DT_HTTP_TIMEOUT` | no | httpx client-level timeout in seconds (default 60) |
 
-## 4. Wire into a client
+## 6. Wire into a client
 
 **VS Code** — `.vscode/mcp.json`:
 
